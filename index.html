@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WattWatch — Home Energy Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.15);
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #00c896;
+    --accent2: #0ea5e9;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --success: #22c55e;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* NAV */
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; background: rgba(13,17,23,0.92); backdrop-filter: blur(12px); }
+  .nav-logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; letter-spacing: -0.3px; }
+  .logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 18px; height: 18px; fill: #0d1117; }
+  .nav-tabs { display: flex; gap: 2px; background: var(--bg3); padding: 4px; border-radius: var(--radius-sm); }
+  .nav-tab { padding: 6px 16px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all .2s; }
+  .nav-tab.active { background: var(--bg2); color: var(--text); border: 1px solid var(--border2); }
+  .nav-tab:hover:not(.active) { color: var(--text); }
+
+  /* LAYOUT */
+  .page { display: none; padding: 2rem; max-width: 1200px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* HERO */
+  .hero { text-align: center; padding: 3rem 1rem 2rem; }
+  .hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; letter-spacing: -1px; line-height: 1.1; margin-bottom: 1rem; }
+  .hero h1 span { color: var(--accent); }
+  .hero p { color: var(--muted); font-size: 1.05rem; max-width: 520px; margin: 0 auto 2rem; line-height: 1.6; }
+
+  /* METRIC CARDS */
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; }
+  .metric-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 0.5rem; }
+  .metric-value { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; }
+  .metric-sub { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  .metric-card.accent { border-color: rgba(0,200,150,0.3); }
+  .metric-card.accent .metric-value { color: var(--accent); }
+  .metric-card.warn .metric-value { color: var(--warn); }
+  .metric-card.good .metric-value { color: var(--success); }
+
+  /* SECTION */
+  .section { margin-bottom: 2rem; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .section-title { font-size: 1rem; font-weight: 600; }
+  .badge { font-size: 0.72rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border2); color: var(--muted); }
+
+  /* CHART WRAPPER */
+  .chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem; }
+  .chart-wrap { position: relative; width: 100%; }
+
+  /* APPLIANCE TABLE */
+  .appliance-grid { display: flex; flex-direction: column; gap: 10px; }
+  .appliance-row { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; }
+  .appliance-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+  .appliance-info { flex: 1; }
+  .appliance-name { font-weight: 500; font-size: 0.95rem; }
+  .appliance-detail { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+  .appliance-usage { text-align: right; flex-shrink: 0; }
+  .appliance-kwh { font-weight: 700; font-size: 1.1rem; }
+  .appliance-cost { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+  .appliance-bar { flex: 1; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; max-width: 120px; }
+  .appliance-bar-fill { height: 100%; border-radius: 2px; transition: width .4s; }
+
+  /* ADD APPLIANCE FORM */
+  .add-form { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+  .form-group label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  .form-group input, .form-group select { width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text); font-size: 0.9rem; outline: none; transition: border-color .2s; }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+  .form-group select option { background: var(--bg3); }
+  .btn { padding: 8px 20px; border-radius: var(--radius-sm); border: none; cursor: pointer; font-size: 0.88rem; font-weight: 500; transition: all .2s; }
+  .btn-primary { background: var(--accent); color: #0d1117; }
+  .btn-primary:hover { background: #00dfaa; }
+  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 4px 12px; font-size: 0.78rem; }
+  .btn-danger:hover { background: rgba(239,68,68,0.1); }
+
+  /* TIPS */
+  .tips-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+  .tip-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+  .tip-icon { font-size: 1.5rem; margin-bottom: 0.6rem; }
+  .tip-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.4rem; }
+  .tip-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+  .tip-save { font-size: 0.78rem; color: var(--success); margin-top: 8px; font-weight: 500; }
+
+  /* COMPARE */
+  .compare-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; }
+  .compare-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+  .compare-label { width: 140px; font-size: 0.85rem; color: var(--muted); flex-shrink: 0; }
+  .compare-bar-wrap { flex: 1; height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+  .compare-bar-fill { height: 100%; border-radius: 4px; }
+  .compare-val { width: 80px; text-align: right; font-size: 0.85rem; font-weight: 500; }
+
+  /* SETTINGS */
+  .settings-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1rem; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 0.9rem; }
+  .settings-sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .settings-input { width: 160px; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 6px 10px; color: var(--text); font-size: 0.9rem; text-align: right; }
+  .toggle { position: relative; width: 40px; height: 22px; cursor: pointer; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track { position: absolute; inset: 0; background: var(--bg3); border-radius: 11px; border: 1px solid var(--border2); transition: background .2s; }
+  .toggle input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+  .toggle-thumb { position: absolute; width: 16px; height: 16px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: left .2s; }
+  .toggle input:checked ~ .toggle-thumb { left: 21px; }
+
+  /* FOOTER */
+  footer { text-align: center; padding: 2rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); margin-top: 3rem; }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* RESPONSIVE */
+  @media (max-width: 600px) {
+    nav { padding: 0.75rem 1rem; }
+    .page { padding: 1rem; }
+    .nav-tabs { display: none; }
+    .mobile-tabs { display: flex !important; }
+  }
+  .mobile-tabs { display: none; gap: 2px; overflow-x: auto; padding: 0.5rem 1rem; background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .mobile-tab { padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; cursor: pointer; border: none; background: transparent; color: var(--muted); white-space: nowrap; }
+  .mobile-tab.active { background: var(--bg3); color: var(--text); }
+
+  .empty { text-align: center; padding: 3rem; color: var(--muted); font-size: 0.9rem; }
+  .tag { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; margin-left: 6px; font-weight: 500; }
+  .tag-high { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .tag-med { background: rgba(245,158,11,0.15); color: var(--warn); }
+  .tag-low { background: rgba(34,197,94,0.15); color: var(--success); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L4.09 12.96A1 1 0 005 14.5h6l-1 7.5 8.91-10.96A1 1 0 0019 9.5h-6l1-7.5z"/></svg>
+    </div>
+    WattWatch
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('dashboard')">Dashboard</button>
+    <button class="nav-tab" onclick="showPage('appliances')">Appliances</button>
+    <button class="nav-tab" onclick="showPage('compare')">Compare</button>
+    <button class="nav-tab" onclick="showPage('tips')">Tips</button>
+    <button class="nav-tab" onclick="showPage('settings')">Settings</button>
+  </div>
+</nav>
+
+<div class="mobile-tabs">
+  <button class="mobile-tab active" onclick="showPage('dashboard')">Dashboard</button>
+  <button class="mobile-tab" onclick="showPage('appliances')">Appliances</button>
+  <button class="mobile-tab" onclick="showPage('compare')">Compare</button>
+  <button class="mobile-tab" onclick="showPage('tips')">Tips</button>
+  <button class="mobile-tab" onclick="showPage('settings')">Settings</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="page-dashboard" class="page active">
+  <div class="hero">
+    <h1>Your home's<br><span>energy at a glance</span></h1>
+    <p>Track consumption, manage costs, and reduce your carbon footprint — all in one place.</p>
+  </div>
+
+  <div class="metric-grid" id="metric-grid">
+    <div class="metric-card accent">
+      <div class="metric-label">Today's Usage</div>
+      <div class="metric-value" id="m-today">—</div>
+      <div class="metric-sub">kWh consumed</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Monthly Total</div>
+      <div class="metric-value" id="m-month">—</div>
+      <div class="metric-sub" id="m-month-cost">estimated cost</div>
+    </div>
+    <div class="metric-card warn">
+      <div class="metric-label">Peak Appliance</div>
+      <div class="metric-value" id="m-peak">—</div>
+      <div class="metric-sub" id="m-peak-sub">highest consumer</div>
+    </div>
+    <div class="metric-card good">
+      <div class="metric-label">CO₂ Avoided</div>
+      <div class="metric-value" id="m-co2">—</div>
+      <div class="metric-sub">vs avg household</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Weekly consumption (kWh)</div>
+      <span class="badge" id="weekly-badge">last 7 days</span>
+    </div>
+    <div class="chart-card">
+      <div class="chart-wrap" style="height:240px;">
+        <canvas id="weekChart" role="img" aria-label="Weekly energy usage bar chart for the last 7 days"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Usage by category</div>
+    </div>
+    <div class="chart-card" style="display:flex;gap:2rem;align-items:center;flex-wrap:wrap;">
+      <div class="chart-wrap" style="height:200px;width:200px;flex-shrink:0;">
+        <canvas id="donutChart" role="img" aria-label="Donut chart showing energy usage breakdown by appliance category"></canvas>
+      </div>
+      <div id="donut-legend" style="flex:1;min-width:180px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APPLIANCES -->
+<div id="page-appliances" class="page">
+  <div class="section-header" style="margin-bottom:1.5rem;">
+    <h2 style="font-size:1.3rem;font-weight:700;">Appliances</h2>
+  </div>
+
+  <div class="add-form">
+    <div class="section-title" style="margin-bottom:1rem;">Add an appliance</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Appliance name</label>
+        <input type="text" id="app-name" placeholder="e.g. Refrigerator" />
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="app-category">
+          <option value="kitchen">🍳 Kitchen</option>
+          <option value="cooling">❄️ Cooling</option>
+          <option value="heating">🔥 Heating</option>
+          <option value="lighting">💡 Lighting</option>
+          <option value="entertainment">📺 Entertainment</option>
+          <option value="laundry">🫧 Laundry</option>
+          <option value="other">⚡ Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Power (watts)</label>
+        <input type="number" id="app-watts" placeholder="e.g. 150" min="1" max="10000" />
+      </div>
+      <div class="form-group">
+        <label>Hours used per day</label>
+        <input type="number" id="app-hours" placeholder="e.g. 8" min="0.1" max="24" step="0.5" />
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="addAppliance()">Add appliance</button>
+  </div>
+
+  <div id="appliance-list" class="appliance-grid"></div>
+</div>
+
+<!-- COMPARE -->
+<div id="page-compare" class="page">
+  <div class="section-header" style="margin-bottom:1.5rem;">
+    <h2 style="font-size:1.3rem;font-weight:700;">Compare usage</h2>
+  </div>
+
+  <div class="section">
+    <div class="section-title" style="margin-bottom:1rem;">Your home vs benchmarks</div>
+    <div class="compare-card" id="compare-benchmarks"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Monthly trend (last 6 months)</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-wrap" style="height:260px;">
+        <canvas id="trendChart" role="img" aria-label="Line chart showing energy usage trend over the last 6 months"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TIPS -->
+<div id="page-tips" class="page">
+  <div class="section-header" style="margin-bottom:1.5rem;">
+    <h2 style="font-size:1.3rem;font-weight:700;">Energy-saving tips</h2>
+  </div>
+  <div class="tips-grid" id="tips-grid"></div>
+</div>
+
+<!-- SETTINGS -->
+<div id="page-settings" class="page">
+  <div class="section-header" style="margin-bottom:1.5rem;">
+    <h2 style="font-size:1.3rem;font-weight:700;">Settings</h2>
+  </div>
+  <div class="settings-card">
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">Electricity rate (per kWh)</div>
+        <div class="settings-sub">Your utility provider's rate</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="color:var(--muted);font-size:0.85rem;" id="currency-sym">$</span>
+        <input type="number" class="settings-input" id="s-rate" value="0.15" step="0.01" min="0.01" oninput="saveSettings()" />
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">Currency</div>
+        <div class="settings-sub">Display currency symbol</div>
+      </div>
+      <select class="settings-input" id="s-currency" oninput="saveSettings()" style="width:120px;">
+        <option value="$">$ USD</option>
+        <option value="₦">₦ NGN</option>
+        <option value="€">€ EUR</option>
+        <option value="£">£ GBP</option>
+        <option value="₹">₹ INR</option>
+        <option value="C$">C$ CAD</option>
+        <option value="A$">A$ AUD</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">Monthly budget</div>
+        <div class="settings-sub">Alert when approaching limit</div>
+      </div>
+      <input type="number" class="settings-input" id="s-budget" value="80" step="5" min="1" oninput="saveSettings()" />
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">Location / environment type</div>
+        <div class="settings-sub">Used for benchmark comparisons</div>
+      </div>
+      <select class="settings-input" id="s-env" oninput="saveSettings()" style="width:160px;">
+        <option value="home">🏠 Home</option>
+        <option value="apartment">🏢 Apartment</option>
+        <option value="office">🏬 Office</option>
+        <option value="shop">🛒 Shop / Store</option>
+        <option value="warehouse">🏭 Warehouse</option>
+        <option value="farm">🌾 Farm</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <div class="section-title" style="margin-bottom:1rem;">Danger zone</div>
+    <button class="btn btn-danger" onclick="clearData()">Clear all data</button>
+    <span style="font-size:0.78rem;color:var(--muted);margin-left:12px;">Removes all appliances and resets to defaults</span>
+  </div>
+</div>
+
+<footer>
+  Built with WattWatch &mdash; Open source on <a href="https://github.com" target="_blank">GitHub</a>.
+  Track smart, live greener.
+</footer>
+
+<script>
+// ===================== STATE =====================
+let state = {
+  appliances: [],
+  settings: { rate: 0.15, currency: '$', budget: 80, env: 'home' }
+};
+
+const CATEGORY_ICONS = {
+  kitchen: '🍳', cooling: '❄️', heating: '🔥',
+  lighting: '💡', entertainment: '📺', laundry: '🫧', other: '⚡'
+};
+const CATEGORY_COLORS = {
+  kitchen: '#f59e0b', cooling: '#0ea5e9', heating: '#ef4444',
+  lighting: '#facc15', entertainment: '#a855f7', laundry: '#22c55e', other: '#8b949e'
+};
+const BENCHMARKS = {
+  home: 900, apartment: 600, office: 1500, shop: 2000, warehouse: 4000, farm: 800
+};
+const TIPS = [
+  { icon:'💡', title:'Switch to LED bulbs', desc:'LED bulbs use 75% less energy than incandescent and last 25× longer.', save:'Save up to $75/year' },
+  { icon:'❄️', title:'Set AC to 24–26°C', desc:'Each degree lower increases consumption by 3–5%. A ceiling fan can feel 3°C cooler.', save:'Save up to 10% on cooling' },
+  { icon:'🔌', title:'Unplug idle devices', desc:'Standby power (vampire load) accounts for 5–10% of home energy use.', save:'Save $50–$100/year' },
+  { icon:'🫧', title:'Wash clothes in cold water', desc:'90% of a washing machine\'s energy goes to heating water. Cold wash works just as well.', save:'Save up to $115/year' },
+  { icon:'☀️', title:'Use natural light', desc:'Keep blinds open during the day to reduce lighting load during peak hours.', save:'Free — just a habit change' },
+  { icon:'🌡️', title:'Seal air leaks', desc:'Drafts around windows and doors let conditioned air escape, wasting heating and cooling energy.', save:'Save 10–20% on HVAC bills' },
+  { icon:'📅', title:'Off-peak appliance use', desc:'Run dishwashers, washing machines, and dryers after 9pm to use cheaper off-peak electricity.', save:'Save with time-of-use rates' },
+  { icon:'🔥', title:'Maintain your fridge coils', desc:'Dusty condenser coils make the fridge work 30% harder. Clean them every 6 months.', save:'Extend appliance life too' },
+];
+
+// ===================== PERSISTENCE =====================
+function saveState() {
+  try { localStorage.setItem('wattwatch', JSON.stringify(state)); } catch(e) {}
+}
+function loadState() {
+  try {
+    const d = localStorage.getItem('wattwatch');
+    if (d) state = { ...state, ...JSON.parse(d) };
+  } catch(e) {}
+}
+
+// ===================== CALCULATIONS =====================
+function dailyKwh(w, h) { return (w * h) / 1000; }
+function monthlyKwh(w, h) { return dailyKwh(w, h) * 30; }
+function totalMonthlyKwh() { return state.appliances.reduce((s, a) => s + monthlyKwh(a.watts, a.hours), 0); }
+function totalDailyKwh() { return state.appliances.reduce((s, a) => s + dailyKwh(a.watts, a.hours), 0); }
+function monthlyCost() { return totalMonthlyKwh() * state.settings.rate; }
+
+// ===================== NAVIGATION =====================
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab, .mobile-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.querySelectorAll('[onclick="showPage(\'' + id + '\')"]').forEach(t => t.classList.add('active'));
+  renderPage(id);
+}
+
+function renderPage(id) {
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'appliances') renderAppliances();
+  if (id === 'compare') renderCompare();
+  if (id === 'tips') renderTips();
+}
+
+// ===================== DASHBOARD =====================
+let weekChartInst, donutChartInst;
+function renderDashboard() {
+  const cur = state.settings.currency;
+  const daily = totalDailyKwh();
+  const monthly = totalMonthlyKwh();
+  const cost = monthlyCost();
+  const budget = state.settings.budget;
+
+  document.getElementById('m-today').textContent = daily.toFixed(2) + ' kWh';
+  document.getElementById('m-month').textContent = monthly.toFixed(0) + ' kWh';
+  document.getElementById('m-month-cost').textContent = cur + cost.toFixed(2) + ' / month' + (cost > budget ? ' ⚠️' : '');
+
+  // Peak
+  if (state.appliances.length) {
+    const peak = state.appliances.reduce((a, b) => monthlyKwh(a.watts, a.hours) > monthlyKwh(b.watts, b.hours) ? a : b);
+    document.getElementById('m-peak').textContent = peak.name.length > 12 ? peak.name.slice(0,12) + '…' : peak.name;
+    document.getElementById('m-peak-sub').textContent = monthlyKwh(peak.watts, peak.hours).toFixed(1) + ' kWh/mo';
+  } else {
+    document.getElementById('m-peak').textContent = '—';
+    document.getElementById('m-peak-sub').textContent = 'no appliances yet';
+  }
+
+  // CO2 (avg Nigerian household ~400kWh/mo, 0.43 kg CO2/kWh)
+  const avgKwh = BENCHMARKS[state.settings.env];
+  const diff = Math.max(0, avgKwh - monthly);
+  document.getElementById('m-co2').textContent = (diff * 0.43).toFixed(0) + ' kg';
+
+  // Weekly chart — simulate past 7 days from daily baseline with ±15% variation
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const base = daily;
+  const weekData = days.map(() => +(base * (0.85 + Math.random() * 0.3)).toFixed(2));
+
+  if (weekChartInst) weekChartInst.destroy();
+  weekChartInst = new Chart(document.getElementById('weekChart'), {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [{
+        label: 'kWh',
+        data: weekData,
+        backgroundColor: days.map((_, i) => i === 6 ? '#00c896' : 'rgba(0,200,150,0.3)'),
+        borderColor: '#00c896',
+        borderWidth: 1,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw.toFixed(2) + ' kWh' } } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b949e' } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b949e', callback: v => v + ' kWh' }, beginAtZero: true }
+      }
+    }
+  });
+
+  // Donut chart — by category
+  const catMap = {};
+  state.appliances.forEach(a => {
+    catMap[a.category] = (catMap[a.category] || 0) + monthlyKwh(a.watts, a.hours);
+  });
+  const catKeys = Object.keys(catMap);
+  if (donutChartInst) donutChartInst.destroy();
+
+  if (catKeys.length === 0) {
+    document.getElementById('donut-legend').innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">Add appliances to see category breakdown.</div>';
+    donutChartInst = null;
+    return;
+  }
+
+  donutChartInst = new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels: catKeys.map(k => CATEGORY_ICONS[k] + ' ' + k),
+      datasets: [{
+        data: catKeys.map(k => +catMap[k].toFixed(2)),
+        backgroundColor: catKeys.map(k => CATEGORY_COLORS[k]),
+        borderColor: '#161b22',
+        borderWidth: 3,
+        hoverBorderWidth: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw.toFixed(1) + ' kWh/mo' } } },
+      cutout: '68%',
+    }
+  });
+
+  const total = catKeys.reduce((s, k) => s + catMap[k], 0) || 1;
+  document.getElementById('donut-legend').innerHTML = catKeys.map(k => `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <span style="width:10px;height:10px;border-radius:2px;background:${CATEGORY_COLORS[k]};flex-shrink:0;"></span>
+      <span style="font-size:0.85rem;flex:1;">${CATEGORY_ICONS[k]} ${k.charAt(0).toUpperCase()+k.slice(1)}</span>
+      <span style="font-size:0.85rem;font-weight:500;">${((catMap[k]/total)*100).toFixed(0)}%</span>
+    </div>
+  `).join('');
+}
+
+// ===================== APPLIANCES =====================
+function addAppliance() {
+  const name = document.getElementById('app-name').value.trim();
+  const cat = document.getElementById('app-category').value;
+  const watts = parseFloat(document.getElementById('app-watts').value);
+  const hours = parseFloat(document.getElementById('app-hours').value);
+  if (!name || !watts || !hours) { alert('Please fill in all fields.'); return; }
+  if (watts < 1 || watts > 50000) { alert('Enter a valid wattage (1–50,000W).'); return; }
+  if (hours < 0.1 || hours > 24) { alert('Hours must be between 0.1 and 24.'); return; }
+  state.appliances.push({ id: Date.now(), name, category: cat, watts, hours });
+  saveState();
+  document.getElementById('app-name').value = '';
+  document.getElementById('app-watts').value = '';
+  document.getElementById('app-hours').value = '';
+  renderAppliances();
+}
+
+function removeAppliance(id) {
+  state.appliances = state.appliances.filter(a => a.id !== id);
+  saveState();
+  renderAppliances();
+}
+
+function renderAppliances() {
+  const list = document.getElementById('appliance-list');
+  if (!state.appliances.length) {
+    list.innerHTML = '<div class="empty">No appliances added yet. Use the form above to get started.</div>';
+    return;
+  }
+  const maxKwh = Math.max(...state.appliances.map(a => monthlyKwh(a.watts, a.hours)));
+  const cur = state.settings.currency;
+  list.innerHTML = state.appliances
+    .sort((a, b) => monthlyKwh(b.watts, b.hours) - monthlyKwh(a.watts, a.hours))
+    .map(a => {
+      const kwh = monthlyKwh(a.watts, a.hours);
+      const cost = (kwh * state.settings.rate).toFixed(2);
+      const pct = ((kwh / maxKwh) * 100).toFixed(0);
+      const level = kwh > 100 ? 'high' : kwh > 30 ? 'med' : 'low';
+      const color = CATEGORY_COLORS[a.category];
+      return `
+        <div class="appliance-row">
+          <div class="appliance-icon" style="background:${color}22;">${CATEGORY_ICONS[a.category]}</div>
+          <div class="appliance-info">
+            <div class="appliance-name">${a.name} <span class="tag tag-${level}">${level === 'high' ? 'High' : level === 'med' ? 'Medium' : 'Low'}</span></div>
+            <div class="appliance-detail">${a.watts}W &middot; ${a.hours}h/day</div>
+          </div>
+          <div class="appliance-bar"><div class="appliance-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+          <div class="appliance-usage">
+            <div class="appliance-kwh">${kwh.toFixed(1)} kWh</div>
+            <div class="appliance-cost">${cur}${cost}/mo</div>
+          </div>
+          <button class="btn btn-danger" onclick="removeAppliance(${a.id})">Remove</button>
+        </div>`;
+    }).join('');
+}
+
+// ===================== COMPARE =====================
+let trendInst;
+function renderCompare() {
+  const monthly = totalMonthlyKwh();
+  const env = state.settings.env;
+  const avg = BENCHMARKS[env];
+  const eco = avg * 0.55;
+  const max = avg * 1.8;
+
+  const rows = [
+    { label: 'Your usage', val: monthly, color: monthly > avg ? '#ef4444' : '#00c896' },
+    { label: 'Eco household', val: eco, color: '#22c55e' },
+    { label: `Avg ${env}`, val: avg, color: '#0ea5e9' },
+    { label: 'High consumer', val: max, color: '#f59e0b' },
+  ];
+
+  const peak = max;
+  document.getElementById('compare-benchmarks').innerHTML = rows.map(r => `
+    <div class="compare-row">
+      <div class="compare-label">${r.label}</div>
+      <div class="compare-bar-wrap"><div class="compare-bar-fill" style="width:${Math.min(100,(r.val/peak)*100).toFixed(0)}%;background:${r.color};"></div></div>
+      <div class="compare-val" style="color:${r.color};">${r.val.toFixed(0)} kWh</div>
+    </div>
+  `).join('');
+
+  // Monthly trend — 6 months simulated
+  const months = ['Jan','Feb','Mar','Apr','May','Jun'];
+  const base = monthly;
+  const trend = months.map((_, i) => +(base * (0.8 + i * 0.04 + (Math.random() * 0.15 - 0.07))).toFixed(1));
+
+  if (trendInst) trendInst.destroy();
+  trendInst = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        {
+          label: 'Your usage',
+          data: trend,
+          borderColor: '#00c896',
+          backgroundColor: 'rgba(0,200,150,0.08)',
+          tension: 0.4, fill: true, pointRadius: 5, pointBackgroundColor: '#00c896',
+        },
+        {
+          label: 'Avg ' + env,
+          data: months.map(() => avg),
+          borderColor: '#0ea5e9',
+          borderDash: [6, 4],
+          tension: 0, fill: false, pointRadius: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.raw + ' kWh' } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b949e' } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b949e', callback: v => v + ' kWh' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ===================== TIPS =====================
+function renderTips() {
+  document.getElementById('tips-grid').innerHTML = TIPS.map(t => `
+    <div class="tip-card">
+      <div class="tip-icon">${t.icon}</div>
+      <div class="tip-title">${t.title}</div>
+      <div class="tip-desc">${t.desc}</div>
+      <div class="tip-save">${t.save}</div>
+    </div>
+  `).join('');
+}
+
+// ===================== SETTINGS =====================
+function saveSettings() {
+  state.settings.rate = parseFloat(document.getElementById('s-rate').value) || 0.15;
+  state.settings.currency = document.getElementById('s-currency').value;
+  state.settings.budget = parseFloat(document.getElementById('s-budget').value) || 80;
+  state.settings.env = document.getElementById('s-env').value;
+  document.getElementById('currency-sym').textContent = state.settings.currency;
+  saveState();
+}
+
+function clearData() {
+  if (confirm('Clear all appliances and reset to defaults?')) {
+    state.appliances = [];
+    saveState();
+    renderAppliances();
+  }
+}
+
+function loadSettings() {
+  document.getElementById('s-rate').value = state.settings.rate;
+  document.getElementById('s-currency').value = state.settings.currency;
+  document.getElementById('s-budget').value = state.settings.budget;
+  document.getElementById('s-env').value = state.settings.env;
+  document.getElementById('currency-sym').textContent = state.settings.currency;
+}
+
+// ===================== DEFAULTS =====================
+function loadDefaults() {
+  if (!state.appliances.length) {
+    state.appliances = [
+      { id: 1, name: 'Refrigerator', category: 'kitchen', watts: 150, hours: 24 },
+      { id: 2, name: 'Air Conditioner', category: 'cooling', watts: 1500, hours: 6 },
+      { id: 3, name: 'LED Lighting', category: 'lighting', watts: 60, hours: 8 },
+      { id: 4, name: 'TV + Decoder', category: 'entertainment', watts: 120, hours: 5 },
+      { id: 5, name: 'Washing Machine', category: 'laundry', watts: 500, hours: 1.5 },
+    ];
+    saveState();
+  }
+}
+
+// ===================== INIT =====================
+loadState();
+loadDefaults();
+loadSettings();
+renderDashboard();
+renderTips();
+</script>
+</body>
+</html>
